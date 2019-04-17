@@ -259,15 +259,15 @@ Method
         * Frustum culling
             * Get [HLODTree](#FLODSceneTree) from [Scene](#FScene)->[SceneLODHierarchy](#FLODSceneTree)
             * If [HLODTree](#FLODSceneTree) is Active [UpdateVisibilityStates(...)](#FLODSceneTree::UpdateVisibilityStates(...)) else [ClearVisibilityState(...)](#FLODSceneTree::ClearVisibilityState(...))
-            * Execute frustum cull in [FrustumCull(...)](#FrustumCull(...)) by [ParallelFor](#ParallelFor(...)), and set visibable primitive bit is **true** in [Views](#FViewInfo).PotentiallyFadingPrimitiveMap and [Views](#FViewInfo).PrimitiveVisibilityMap
-            * Return the number "NumCulledPrimitives" how many had been culled, STAT will use it
-            * Updated primitive fading states in [UpdatePrimitiveFading(...)](#UpdatePrimitiveFading(...)), like: update UniformBuffer, use uniform to determine which texture will be used in shader, maybe?
+            * Execute frustum cull in [FrustumCull(...)](#FrustumCull(...)) by [ParallelFor](#ParallelFor(...)), and set the visibable bit of the primitive is **true** in [Views](#FViewInfo).PotentiallyFadingPrimitiveMap and [Views](#FViewInfo).PrimitiveVisibilityMap
+            * Return the number "NumCulledPrimitives", how many primitives had been culled, STAT will use it
+            * Updated primitive fading states in [UpdatePrimitiveFading(...)](#UpdatePrimitiveFading(...))
         * Set Visibility to "false" in [View](#FViewInfo).PrimitiveVisibilityMap if [View](#FViewInfo).HiddenPrimitives contain it
-        * If the view has any primitive is flaged by show only, store them into ShowOnlyPrimitives, hide everything else
+        * If the view has any primitive is flaged by ShowOnly, store them into ShowOnlyPrimitives, hide everything else
         * [View](#FViewInfo).bStaticSceneOnly branch, reflection captures use this, if there's not Proxy->HasStaticLighting() then set visibility to "false"
-        * Wireframe branch, cull small objects in wireframe in ortho views, this is important for performance in the editor because wireframe disables any kind of occlusion culling
+        * Wireframe Mode, cull small objects in wireframe in ortho views, this is important for performance in the editor because wireframe disables any kind of occlusion culling
         * [OcclusionCull(...)](#OcclusionCull(...))
-        * Execute [ConditionalUpdateStaticMeshes(...)](#FPrimitiveSceneInfo::ConditionalUpdateStaticMeshes(...)) if any element of [Scene](#FScene).PrimitivesNeedingStaticMeshUpdate is contained by [View](#FViewInfo).PrimitiveVisibilityMap
+        * Execute [ConditionalUpdateStaticMeshes(...)](#FPrimitiveSceneInfo::ConditionalUpdateStaticMeshes(...)) if any element in [Scene](#FScene).PrimitivesNeedingStaticMeshUpdate is contained by [View](#FViewInfo).PrimitiveVisibilityMap
         * [ComputeAndMarkRelevanceForViewParallel(...)](#ComputeAndMarkRelevanceForViewParallel(...))
         * [GatherDynamicMeshElements(...)](#FSceneRenderer::GatherDynamicMeshElements(...))
         * [SetupMeshPass(...)](#FSceneRenderer::SetupMeshPass(...))
@@ -325,11 +325,11 @@ Method
 	FPrimitiveViewMasks& HasViewCustomDataMasks
 	)
     ```
-    * Create [FRelevancePackets](#FRelevancePacket) for parallel compute, every Packet have 128 elements, that means if we have 256 primitives will pack into two Packets to execute twice, parallelly
-    * Compare them in [ParallelFor](#ParallelFor(...)), every task execute by [AnyThreadTask()](#FRelevancePacket::AnyThreadTask())
-    * Collect all [Packets](#FRelevancePacket) and reserve the size of [ViewCommands](#FViewCommands)
-    * ForEach [Packet](#FRelevancePacket).[RenderThreadFinalize()](#FRelevancePacket::RenderThreadFinalize()), then don't forget destructing them
-    * Set StaticMeshVisibilityMap, StaticMeshFadeOutDitheredLODMap, StaticMeshFadeInDitheredLODMap by MarkMasks which is output of the [FRelevancePacket](#FRelevancePacket)'s [process](#FRelevancePacket::AnyThreadTask())
+    * Create [FRelevancePackets](#FRelevancePacket) for parallel compute, every Packet have 128 elements, that means if we have 256 primitives to process, primitives will be packed into two Packets to parallel execute in [ParallelFor](#ParallelFor(...))
+    * Compare them in [ParallelFor](#ParallelFor(...)), every [Packet](#FRelevancePacket) task execute by [AnyThreadTask()](#FRelevancePacket::AnyThreadTask())
+    * After parallel execute, collect all [Packets](#FRelevancePacket) and reserve the size of [ViewCommands](#FViewCommands)
+    * ForEach [Packet](#FRelevancePacket).[RenderThreadFinalize()](#FRelevancePacket::RenderThreadFinalize()), and don't forget to destructe them
+    * Set the visiable bits: StaticMeshVisibilityMap, StaticMeshFadeOutDitheredLODMap and StaticMeshFadeInDitheredLODMap by MarkMasks, that MarkMasks is the output of the [FRelevancePacket](#FRelevancePacket)'s [process](#FRelevancePacket::AnyThreadTask())
 * ### FRelevancePacket::RenderThreadFinalize()
     ```c++
     void RenderThreadFinalize()
@@ -345,16 +345,16 @@ Method
     ```c++
     void FRelevancePacket::ComputeRelevance()
     ```
-    * Iterate all of the primitives in Input variable which is inited while the begining of the [ComputeAndMarkRelevanceForViewParallel(...)](#ComputeAndMarkRelevanceForViewParallel(...)) execute
-        * Get [PrimitiveViewRelevance](#FPrimitiveViewRelevance) via [FPrimitiveSceneInfo](#FPrimitiveSceneInfo) in [FScene](#FScene)
-        * Classify [PrimitiveViewRelevances](#FPrimitiveViewRelevance) into different Container like  [RelevantStaticPrimitives](#FRelevancePrimSet) (bit index relate to [Scene](#FScene).[Primitives](#FPrimitiveSceneInfo)), TArray< FMeshDecalBatch> MeshDecalBatches, and [TranslucentPrimCount](#FTranslucenyPrimCount)
+    * Iterate all of the primitives in Input variable which is inited while the begining of the [ComputeAndMarkRelevanceForViewParallel(...)](#ComputeAndMarkRelevanceForViewParallel(...))
+        * Get [PrimitiveViewRelevance](#FPrimitiveViewRelevance) from [FPrimitiveSceneInfo](#FPrimitiveSceneInfo) from [FScene](#FScene)
+        * Classify [PrimitiveViewRelevances](#FPrimitiveViewRelevance) into different Container like  [RelevantStaticPrimitives](#FRelevancePrimSet) (it's the bit index that relate to [Scene](#FScene).[Primitives](#FPrimitiveSceneInfo)), NotDrawRelevant, TArray< FMeshDecalBatch> MeshDecalBatches, and [TranslucentPrimCount](#FTranslucenyPrimCount)
 * ### FRelevancePacket::MarkRelevant()
     ```c++
     void FRelevancePacket::MarkRelevant()
     ```
     * Iterate RelevantStaticPrimitives, [determine](#ComputeLODForMeshes(...)) which LOD should be use, 
         > **Caution:** static mesh doesn't support mesh render command cache if enable [StaticMeshRelevance](#FStaticMeshBatchRelevance).bDitheredLODTransition, "Don't cache if it requires per view per mesh state for LOD dithering or distance cull fade."
-    * Classify primitives into VisibleCachedDrawCommands and DynamicBuildRequests by [PassType](#EMeshPass::Type), if render command has been cached, add that command to VisibleCachedDrawCommands, if not add [StaticMesh](#FStaticMeshBatch) to DynamicBuildRequests
+    * Classify primitives into VisibleCachedDrawCommands and DynamicBuildRequests by [PassType](#EMeshPass::Type), if render command has been cached, add that command to VisibleCachedDrawCommands, if not add [FStaticMeshBatch](#FStaticMeshBatch) to DynamicBuildRequests, dynamic draw command will be created later if has any element in DynamicBuildRequests
         ```c++
         typedef TArray<FVisibleMeshDrawCommand, TInlineAllocator<AverageMeshBatchNumPerRelevancePacket>> FPassDrawCommandArray;
         typedef TArray<const FStaticMeshBatch*, TInlineAllocator<AverageMeshBatchNumPerRelevancePacket>> FPassDrawCommandBuildRequestArray;
@@ -379,8 +379,8 @@ Method
      */
     static void UpdatePrimitiveFading(const FScene* Scene, FViewInfo& View)
     ```
-    * Clear [View](#ViewInfo)::[PrimitiveFadingStates](#FPrimitiveFadingState)
-    * Update (PrimitiveFadingStates)[#FPrimitiveFadingState] which primitive is contained in [View](#ViewInfo)::PotentiallyFadingPrimitiveMap, Unform will be updated, and we could changge lod fade time GFadeTime value using **r.LODFadeTime**
+    * Clear [View](#FViewInfo)::[PrimitiveFadingStates](#FPrimitiveFadingState)
+    * Update (PrimitiveFadingStates)[#FPrimitiveFadingState] which primitive is contained in [View](#FViewInfo)::PotentiallyFadingPrimitiveMap, Unform will be updated, and we could changge lod fade time GFadeTime value using **r.LODFadeTime**
         ```c++
         /** The uniform shader parameters associated with a distance cull fade. */
         // This was moved out of ScenePrivate.h to workaround MSVC vs clang template issue (it's used in this header file, so       needs to be declared earlier)
