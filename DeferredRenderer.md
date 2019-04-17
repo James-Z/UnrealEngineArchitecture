@@ -148,6 +148,42 @@ Classes
     	}
     };
     ```
+* ### FPrimitiveFadingState
+    ```c++
+    /**
+     * Stores fading state for a single primitive in a single view
+     */
+    class FPrimitiveFadingState
+    {
+    public:
+    	FPrimitiveFadingState()
+    		: FadeTimeScaleBias(ForceInitToZero)
+    		, FrameNumber(0)
+    		, EndTime(0.0f)
+    		, bIsVisible(false)
+    		, bValid(false)
+    	{
+    	}
+
+    	/** Scale and bias to use on time to calculate fade opacity */
+    	FVector2D FadeTimeScaleBias;
+
+    	/** The uniform buffer for the fade parameters */
+    	FDistanceCullFadeUniformBufferRef UniformBuffer;
+
+    	/** Frame number when last updated */
+    	uint32 FrameNumber;
+
+    	/** Time when fade will be finished. */
+    	float EndTime;
+
+    	/** Currently visible? */
+    	bool bIsVisible;
+
+    	/** Valid? */
+    	bool bValid;
+    };
+    ```
 
 Pipeline
 --------
@@ -223,8 +259,8 @@ Method
         * Frustum culling
             * Get [HLODTree](#FLODSceneTree) from [Scene](#FScene)->[SceneLODHierarchy](#FLODSceneTree)
             * If [HLODTree](#FLODSceneTree) is Active [UpdateVisibilityStates(...)](#FLODSceneTree::UpdateVisibilityStates(...)) else [ClearVisibilityState(...)](#FLODSceneTree::ClearVisibilityState(...))
-            * Execute frustum cull in [FrustumCull(...)](#FrustumCull(...)) by [ParallelFor](#ParallelFor(...)), and store those visibility bit in [Views](#FViewInfo).PotentiallyFadingPrimitiveMap and [Views](#FViewInfo).PrimitiveVisibilityMap
-            * Return the number "NumCulledPrimitives" which had been culled, STAT will use it
+            * Execute frustum cull in [FrustumCull(...)](#FrustumCull(...)) by [ParallelFor](#ParallelFor(...)), and set visibable primitive bit is **true** in [Views](#FViewInfo).PotentiallyFadingPrimitiveMap and [Views](#FViewInfo).PrimitiveVisibilityMap
+            * Return the number "NumCulledPrimitives" how many had been culled, STAT will use it
             * Updated primitive fading states in [UpdatePrimitiveFading(...)](#UpdatePrimitiveFading(...)), like: update UniformBuffer, use uniform to determine which texture will be used in shader, maybe?
         * Set Visibility to "false" in [View](#FViewInfo).PrimitiveVisibilityMap if [View](#FViewInfo).HiddenPrimitives contain it
         * If the view has any primitive is flaged by show only, store them into ShowOnlyPrimitives, hide everything else
@@ -338,10 +374,25 @@ Method
     * ...TODO
 * ### UpdatePrimitiveFading(...)
     ```c++
+    /**
+     * Updated primitive fading states for the view.
+     */
     static void UpdatePrimitiveFading(const FScene* Scene, FViewInfo& View)
     ```
-    * ...TODO
-* ### ParallelFor(...)
+    * Clear [View](#ViewInfo)::[PrimitiveFadingStates](#FPrimitiveFadingState)
+    * Update (PrimitiveFadingStates)[#FPrimitiveFadingState] which primitive is contained in [View](#ViewInfo)::PotentiallyFadingPrimitiveMap, Unform will be updated, and we could changge lod fade time GFadeTime value using **r.LODFadeTime**
+        ```c++
+        /** The uniform shader parameters associated with a distance cull fade. */
+        // This was moved out of ScenePrivate.h to workaround MSVC vs clang template issue (it's used in this header file, so       needs to be declared earlier)
+        // Z is the dither fade value (-1 = just fading in, 0 no fade, 1 = just faded out)
+        // W is unused and zero
+        BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FDistanceCullFadeUniformShaderParameters,)
+        	SHADER_PARAMETER_EX(FVector2D,FadeTimeScaleBias, EShaderPrecisionModifier::Half)
+        END_GLOBAL_SHADER_PARAMETER_STRUCT()
+
+        typedef TUniformBufferRef< FDistanceCullFadeUniformShaderParameters > FDistanceCullFadeUniformBufferRef;
+                ```
+        * ### ParallelFor(...)
     ```c++
     inline void ParallelFor(int32 Num, TFunctionRef<void(int32)> Body, bool bForceSingleThread = false)
     ```
